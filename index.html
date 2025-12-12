@@ -1,12 +1,180 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Subdomain</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Guide: Create a Subdomain on Ubuntu + Apache + Certbot (Hostinger VPS)</title>
+  <style>
+    :root { --bg:#0b0f14; --fg:#e6edf3; --muted:#a8b3bf; --card:#111823; --accent:#5dd6ff; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--fg); line-height:1.5; }
+    main { max-width: 980px; margin: 0 auto; padding: 28px 18px 60px; }
+    h1,h2,h3 { line-height:1.2; }
+    h1 { font-size: 1.8rem; margin: 0 0 8px; }
+    .sub { color: var(--muted); margin: 0 0 24px; }
+    .card { background: var(--card); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 18px; margin: 14px 0; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    pre { background: rgba(0,0,0,.35); padding: 12px; border-radius: 12px; overflow:auto; border: 1px solid rgba(255,255,255,.08); }
+    .hint { color: var(--muted); }
+    ul { margin: 8px 0 0 18px; }
+    .ok { color: #8dff8d; }
+    .warn { color: #ffd38d; }
+    .tag { display:inline-block; padding: 2px 10px; border: 1px solid rgba(255,255,255,.16); border-radius: 999px; font-size: .85rem; color: var(--muted); margin-left: 8px; }
+  </style>
 </head>
 <body>
-    <h1>Hello, World!</h1>
-    <p>This is a sample HTML document.</p>
+<main>
+  <h1>Guide: Create a Subdomain on Ubuntu + Apache + Certbot</h1>
+  <p class="sub">
+    This is the exact process we followed: DNS A record → deploy static repo → Apache VirtualHost (port 80) → HTTPS with Certbot.
+    <span class="tag">Ubuntu 24.04 LTS</span>
+    <span class="tag">Apache 2.4</span>
+    <span class="tag">Certbot</span>
+  </p>
+
+  <div class="card">
+    <h2>0) Before you start</h2>
+    <ul>
+      <li>You need a VPS with Apache installed and running.</li>
+      <li>You need access to the domain DNS (Hostinger panel).</li>
+      <li>Use your normal user (e.g., <code>daniel</code>) and run admin actions with <code>sudo</code> (recommended).</li>
+    </ul>
+    <p class="hint"><span class="ok">✅ Good practice:</span> work as a regular user with sudo, not as root.</p>
+  </div>
+
+  <div class="card">
+    <h2>1) Create the DNS record (Hostinger panel)</h2>
+    <p>Create an <strong>A record</strong>:</p>
+    <ul>
+      <li><strong>Name/Host:</strong> <code>subdomain</code></li>
+      <li><strong>Type:</strong> <code>A</code></li>
+      <li><strong>Value:</strong> <code>&lt;YOUR_VPS_PUBLIC_IP&gt;</code></li>
+      <li><strong>TTL:</strong> default is fine</li>
+    </ul>
+    <p class="hint"><span class="warn">⏳ Note:</span> DNS propagation can take minutes (sometimes longer).</p>
+  </div>
+
+  <div class="card">
+    <h2>2) Deploy your site files</h2>
+    <p>Recommended path pattern on Ubuntu:</p>
+    <pre><code>/var/www/subdomain/public</code></pre>
+
+    <h3>2.1 Create folders + permissions</h3>
+    <pre><code>sudo mkdir -p /var/www/subdomain/public
+sudo chown -R daniel:www-data /var/www/subdomain
+sudo chmod -R 2755 /var/www/subdomain</code></pre>
+
+    <h3>2.2 Copy or clone your repo</h3>
+    <p>Option A: copy from an existing clone:</p>
+    <pre><code>rsync -av --delete ~/path/to/repo/ /var/www/subdomain/public/</code></pre>
+    <p>Option B: clone directly into <code>/var/www</code>:</p>
+    <pre><code>cd /var/www/subdomain
+git clone &lt;REPO_URL&gt; public
+sudo chown -R daniel:www-data /var/www/subdomain</code></pre>
+
+    <h3>2.3 Confirm you have an entry point</h3>
+    <pre><code>ls -la /var/www/subdomain/public
+# You should see index.html (or your main HTML file)</code></pre>
+  </div>
+
+  <div class="card">
+    <h2>3) Configure Apache (HTTP / port 80)</h2>
+    <p>Create a new VirtualHost file:</p>
+    <pre><code>sudo nano /etc/apache2/sites-available/subdomain.conf</code></pre>
+
+    <p>Paste this (update domain + paths):</p>
+    <pre><code>&lt;VirtualHost *:80&gt;
+    ServerName subdomain.seriousdesign.net
+
+    DocumentRoot /var/www/subdomain/public
+
+    &lt;Directory /var/www/subdomain/public&gt;
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    &lt;/Directory&gt;
+
+    ErrorLog ${APACHE_LOG_DIR}/subdomain_error.log
+    CustomLog ${APACHE_LOG_DIR}/subdomain_access.log combined
+&lt;/VirtualHost&gt;</code></pre>
+
+    <h3>3.1 Enable the site + reload</h3>
+    <pre><code>sudo a2ensite subdomain.conf
+sudo apache2ctl configtest
+sudo systemctl reload apache2</code></pre>
+
+    <p class="hint"><span class="ok">✅ Expected:</span> <code>apache2ctl configtest</code> returns <code>Syntax OK</code>.</p>
+
+    <h3>3.2 Optional: disable the default site</h3>
+    <p>If you don’t want Apache to ever serve the default placeholder site:</p>
+    <pre><code>sudo a2dissite 000-default.conf
+sudo systemctl reload apache2</code></pre>
+  </div>
+
+  <div class="card">
+    <h2>4) Verify routing &amp; DNS</h2>
+
+    <h3>4.1 Confirm DNS resolves on the server</h3>
+    <pre><code>getent hosts subdomain.seriousdesign.net</code></pre>
+    <p class="hint"><span class="ok">✅ Expected:</span> it returns an IP address (your VPS IP).</p>
+
+    <h3>4.2 Confirm Apache sees your vhost</h3>
+    <pre><code>sudo apache2ctl -S</code></pre>
+    <p class="hint"><span class="ok">✅ Expected:</span> a line like
+      <code>port 80 namevhost subdomain.seriousdesign.net (.../subdomain.conf:1)</code>
+    </p>
+
+    <h3>4.3 Test HTTP response</h3>
+    <pre><code>curl -I http://subdomain.seriousdesign.net</code></pre>
+  </div>
+
+  <div class="card">
+    <h2>5) Enable HTTPS (Certbot + Apache plugin)</h2>
+    <h3>5.1 Confirm Certbot is installed</h3>
+    <pre><code>certbot --version</code></pre>
+
+    <h3>5.2 Request certificate and auto-configure Apache</h3>
+    <pre><code>sudo certbot --apache -d subdomain.seriousdesign.net</code></pre>
+
+    <p>When prompted, choose the option to <strong>redirect</strong> HTTP → HTTPS (recommended).</p>
+
+    <h3>5.3 Reload and confirm your HTTPS vhost exists</h3>
+    <pre><code>sudo systemctl reload apache2
+sudo apache2ctl -S | grep -E "subdomain\.seriousdesign\.net|:443"</code></pre>
+
+    <h3>5.4 Test HTTPS response</h3>
+    <pre><code>curl -I https://subdomain.seriousdesign.net</code></pre>
+  </div>
+
+  <div class="card">
+    <h2>6) Confirm auto-renewal</h2>
+    <pre><code>sudo certbot renew --dry-run</code></pre>
+    <p class="hint"><span class="ok">✅ Expected:</span> renewal simulation succeeds (no errors).</p>
+  </div>
+
+  <div class="card">
+    <h2>7) Troubleshooting checklist</h2>
+    <ul>
+      <li><strong>DNS not ready:</strong> <code>getent hosts subdomain.seriousdesign.net</code> shows wrong IP or nothing.</li>
+      <li><strong>Apache vhost not loaded:</strong> check <code>/etc/apache2/sites-enabled/</code> and run <code>sudo apache2ctl -S</code>.</li>
+      <li><strong>Syntax errors:</strong> run <code>sudo apache2ctl configtest</code>.</li>
+      <li><strong>Check logs:</strong>
+        <pre><code>sudo tail -n 100 /var/log/apache2/subdomain_error.log
+sudo tail -n 100 /var/log/apache2/subdomain_access.log</code></pre>
+      </li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Appendix: What these commands mean (quick)</h2>
+    <ul>
+      <li><code>lsb_release -a</code> → shows Ubuntu distribution/version (helps match correct docs).</li>
+      <li><code>apache2 -v</code> → shows Apache version/build (directive compatibility).</li>
+      <li><code>apache2ctl -S</code> → shows loaded vhosts and which is default per port (routing table).</li>
+      <li><code>a2dissite 000-default.conf</code> → disables the default catch-all site (optional, often recommended).</li>
+    </ul>
+  </div>
+
+  <p class="hint">End of guide.</p>
+</main>
 </body>
 </html>
